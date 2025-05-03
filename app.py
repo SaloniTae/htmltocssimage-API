@@ -8,6 +8,11 @@ INTERNAL_API_KEY = "OTTONRENT"
 
 HTML_TO_IMAGE_URL = "https://htmlcsstoimage.com/demo_run"
 
+
+@app.route("/ping", methods=["GET"])
+def ping():
+    return jsonify({"status": "alive"}), 200
+    
 @app.route("/convert", methods=["POST"])
 def render_html():
     # 1) Check API key
