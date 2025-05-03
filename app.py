@@ -11,7 +11,14 @@ HTML_TO_IMAGE_URL = "https://htmlcsstoimage.com/demo_run"
 
 @app.route("/ping", methods=["GET"])
 def ping():
-    return jsonify({"status": "alive"}), 200
+    """
+    Health-check endpoint to verify the service is running.
+    Always returns HTTP 200.
+    """
+    return jsonify({
+        "status": "ok",
+        "message": "pong"
+    }), 200
     
 @app.route("/convert", methods=["POST"])
 def render_html():
