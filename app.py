@@ -85,7 +85,7 @@ def fetch_status(session: requests.Session) -> Tuple[str, Optional[str]]:
     Returns (cookie_str, token) where each may be empty/None if not found.
     Raises requests.exceptions.RequestException on failure.
     """
-    resp = session.get(STATUS_ENDPOINT, timeout=10)
+    resp = session.get(STATUS_ENDPOINT, timeout=30)
     resp.raise_for_status()
     data = resp.json()
     cookies = data.get("cookies", [])
