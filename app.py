@@ -91,6 +91,10 @@ def render_html():
     headers = {
         "Accept":       "*/*",
         "Content-Type": "application/json",
+        "Accept-language": "en-US,en;q=0.9",
+        "Content-type": "application/json",
+        "Origin": "https://htmlcsstoimage.com",
+        "Referer": "https://htmlcsstoimage.com/",        
         # as you requested: Cookie header contains the cookie "value" (not name=value)
         "Cookie": cookie_value,
         # lowercase header name exactly as you wanted
