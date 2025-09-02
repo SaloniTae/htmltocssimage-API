@@ -1,76 +1,14 @@
-from flask import Flask, request, jsonify, Response, abort, stream_with_context
+from flask import Flask, request, jsonify, Response, abort
 import requests
-import logging
-from typing import Dict, Any, Tuple
 
 app = Flask(__name__)
-logger = logging.getLogger(__name__)
 
 # Hard-coded API key
 INTERNAL_API_KEY = "OTTONRENT"
 
-# Upstream HTML->image endpoint (unchanged)
 HTML_TO_IMAGE_URL = "https://htmlcsstoimage.com/image-demo"
-
-# Status endpoint (where we GET cookies + requestVerificationToken)
 STATUS_URL = "http://166.0.242.212:7777/status"
-
-# Recommended: tune these timeouts to your needs
-STATUS_TIMEOUT = (5, 10)   # (connect, read)
-UPSTREAM_TIMEOUT = (5, 120)
-
-
-def fetch_status_json(status_url: str, timeout: Tuple[int, int] = STATUS_TIMEOUT) -> Dict[str, Any]:
-    """GET /status, return parsed JSON. Raises requests.RequestException on failure."""
-    r = requests.get(status_url, timeout=timeout)
-    r.raise_for_status()
-    return r.json()
-
-
-def build_session_and_headers_from_status(status_json: Dict[str, Any]) -> Tuple[requests.Session, Dict[str, str]]:
-    """
-    Build a requests.Session populated with cookies from status_json and headers containing
-    requestVerificationToken (if present). Also prepares a fallback Cookie header string
-    to send when cookie domains may not match automatically.
-    """
-    session = requests.Session()
-    headers: Dict[str, str] = {
-        "Accept": "*/*",
-        "Content-Type": "application/json",
-        # some servers expect X-Requested-With
-        "X-Requested-With": "XMLHttpRequest",
-    }
-
-    # Extract token and add common header names for compatibility
-    token = status_json.get("requestVerificationToken") or status_json.get("request_verification_token")
-    if token:
-        headers["RequestVerificationToken"] = token
-        headers["X-RequestVerificationToken"] = token
-
-    # Extract cookies array and set into session cookie jar
-    cookies_arr = status_json.get("cookies", []) or []
-    cookie_pairs = []
-    for c in cookies_arr:
-        name = c.get("name")
-        value = c.get("value", "")
-        domain = c.get("domain")  # may be like ".htmlcsstoimage.com"
-        path = c.get("path", "/")
-        if not name:
-            continue
-        try:
-            # Try to set domain/path (requests accepts those)
-            session.cookies.set(name, value, domain=domain, path=path)
-        except Exception:
-            # Fallback if domain/path cause issues
-            session.cookies.set(name, value)
-        cookie_pairs.append(f"{name}={value}")
-
-    # Build explicit Cookie header fallback (useful when posting to an IP or different hostname)
-    if cookie_pairs:
-        headers["Cookie"] = "; ".join(cookie_pairs)
-
-    return session, headers
-
+TIMEOUT = 20  # seconds
 
 @app.route("/ping", methods=["GET"])
 def ping():
@@ -82,7 +20,6 @@ def ping():
         "status": "ok",
         "message": "pong"
     }), 200
-
 
 @app.route("/convert", methods=["POST"])
 def render_html():
@@ -97,7 +34,45 @@ def render_html():
     if not html:
         abort(400, "`html` field is required")
 
-    # 3) Build payload to forward (keeps your original fields + preserves values)
+    # 3) Fetch /status to get cookie value and token (priority: GET)
+    try:
+        status_resp = requests.get(STATUS_URL, timeout=TIMEOUT)
+        status_resp.raise_for_status()
+        status_json = status_resp.json()
+    except Exception as e:
+        abort(502, f"Failed to fetch status endpoint: {e}")
+
+    # 4) Extract single cookie 'value' (prefer hcti.af)
+    cookies_arr = status_json.get("cookies", []) or []
+    cookie_value = None
+    # prefer cookie named 'hcti.af' if present
+    for c in cookies_arr:
+        if isinstance(c, dict) and c.get("name") == "hcti.af" and c.get("value"):
+            cookie_value = c.get("value")
+            break
+    # fallback to first cookie.value if hcti.af not present
+    if not cookie_value and cookies_arr:
+        first = cookies_arr[0]
+        if isinstance(first, dict):
+            cookie_value = first.get("value")
+
+    # 5) Extract token (try several common keys)
+    token = status_json.get("requestVerificationToken") \
+            or status_json.get("requestverificationtoken") \
+            or status_json.get("RequestVerificationToken") \
+            or status_json.get("__RequestVerificationToken") \
+            or status_json.get("token")
+    # last resort: search any key with 'token' in its name
+    if not token:
+        for k, v in status_json.items():
+            if isinstance(k, str) and ("token" in k.lower() or "verification" in k.lower()):
+                token = v
+                break
+
+    if not cookie_value or not token:
+        abort(502, "Missing cookie value or token from /status response")
+
+    # 6) Build payload to forward
     forward_payload = {
         "html": html,
         "css":               data.get("css", ""),
@@ -112,56 +87,36 @@ def render_html():
         "device_scale":      data.get("device_scale", "")
     }
 
-    # ===== ADDED: Fetch status and attach cookies + verification token =====
-    try:
-        status_json = fetch_status_json(STATUS_URL)
-    except requests.RequestException as exc:
-        logger.exception("Failed to fetch status JSON from %s", STATUS_URL)
-        # upstream status unavailable -> return 502 with a helpful message
-        return jsonify({"error": "failed to fetch upstream status", "detail": str(exc)}), 502
-
-    session, extra_headers = build_session_and_headers_from_status(status_json)
-
-    # Merge headers: keep your Accept/Content-Type but allow token/Cookie from extra_headers to override/add
+    # 7) Forward request with extracted cookie "value" and token in headers
     headers = {
-        "Accept":        "*/*",
-        "Content-Type":  "application/json",
+        "Accept":       "*/*",
+        "Content-Type": "application/json",
+        # as you requested: Cookie header contains the cookie "value" (not name=value)
+        "Cookie": cookie_value,
+        # lowercase header name exactly as you wanted
+        "requestverificationtoken": token
     }
-    # update with token + cookie + extras
-    headers.update(extra_headers)
 
-    # Also: include token in the JSON payload for compatibility (some servers expect token in body)
-    token = status_json.get("requestVerificationToken") or status_json.get("request_verification_token")
-    if token:
-        # non-destructive: only add if not present already
-        if "requestVerificationToken" not in forward_payload:
-            forward_payload["requestVerificationToken"] = token
-
-    # 4) Forward request to upstream using session (so cookies are sent automatically)
     try:
-        upstream = session.post(
+        upstream = requests.post(
             HTML_TO_IMAGE_URL,
             headers=headers,
             json=forward_payload,
             stream=True,
-            timeout=UPSTREAM_TIMEOUT
+            timeout=TIMEOUT
         )
-    except requests.RequestException as exc:
-        logger.exception("Upstream request to %s failed", HTML_TO_IMAGE_URL)
-        return jsonify({"error": "upstream request failed", "detail": str(exc)}), 502
+    except Exception as e:
+        abort(502, f"Failed to call upstream HTML->image service: {e}")
 
-    # 5) Stream the response back (preserve most upstream headers except encoding/transfer)
-    response_headers = {
-        k: v for k, v in upstream.headers.items()
-        if k.lower() not in ("content-encoding", "transfer-encoding")
-    }
-
+    # 8) Stream the response back
     return Response(
-        stream_with_context(upstream.iter_content(chunk_size=4096)),
+        upstream.iter_content(chunk_size=4096),
         status=upstream.status_code,
-        headers=response_headers
+        headers={
+            k: v for k, v in upstream.headers.items()
+            if k.lower() not in ("content-encoding", "transfer-encoding")
+        }
     )
-
 
 if __name__ == "__main__":
     # Render will auto-detect and run this via gunicorn
