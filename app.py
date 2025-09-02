@@ -54,6 +54,10 @@ def render_html():
         headers={
             "Accept":        "*/*",
             "Content-Type":  "application/json",
+            "Origin": "https://htmlcsstoimage.com",
+            "Referer": "https://htmlcsstoimage.com/",
+            "Cookie": "_gid=GA1.2.1136614202.1756834491; hcti.af=CfDJ8JFEjB_iVf9BjBc7Rw9QVVt_N43FaTzAAbvjCdvt5K6oy3zEJ_15mneJteQx4zoT6ioGpv8B86Rg1bPTCjdsF0QV5GTLjUWVjJd0P9DFqPrqwuY9GAv0ykmXbuZD2_G9DIkghj-oBAU4_TUrp4UJosY; _ga_JLLLQJL669=GS2.1.s1756830587$o3$g1$t1756834492$j54$l0$h0; _ga=GA1.1.790635408.1756834491; _gat_gtag_UA_32961413_2=1",
+            "requestverificationtoken": "CfDJ8JFEjB_iVf9BjBc7Rw9QVVtqL0Jmano84runj1RszkN57j3PL8Bne3vfLoTBhuVmN9DzxN2QP6QkRtSZWbvZ3q-qf9SNoMMyhFfSmcB6Xf32q-Q8fcr3hNVevgAwHLPYZEVMVgJtydvyTY9syOyhuVQ"
         },
         json=forward_payload,
         stream=True
