@@ -9,6 +9,12 @@ from flask import Flask, request, abort, Response, jsonify
 import requests
 
 # ---------- CONFIG ----------
+
+CONNECT_TIMEOUT = int(os.environ.get("HTMLCSI_CONNECT_TIMEOUT", 25))
+READ_TIMEOUT    = int(os.environ.get("HTMLCSI_READ_TIMEOUT", 120))
+REQUEST_TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
+
+
 INTERNAL_API_KEY = os.environ.get("HTMLCSI_API_KEY", "OTTONRENT")
 STATUS_ENDPOINT = os.environ.get("STATUS_ENDPOINT", "http://166.0.242.212:7777/status")
 POST_ENDPOINT = os.environ.get("POST_ENDPOINT", "https://htmlcsstoimage.com/image-demo")
@@ -169,7 +175,7 @@ def convert():
 
     # Forward the request and stream back
     try:
-        upstream = sess.post(POST_ENDPOINT, headers=headers, json=forward_payload, stream=True, timeout=(5, 120))
+        upstream = sess.post(POST_ENDPOINT, headers=headers, json=forward_payload, stream=True, timeout=REQUEST_TIMEOUT)
     except requests.RequestException as e:
         app.logger.exception("Error contacting upstream service")
         return jsonify({"error": "Failed to contact upstream service", "details": str(e)}), 502
