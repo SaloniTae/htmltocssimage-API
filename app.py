@@ -6,7 +6,7 @@ app = Flask(__name__)
 # Hard-coded API key
 INTERNAL_API_KEY = "OTTONRENT"
 
-HTML_TO_IMAGE_URL = "https://htmlcsstoimage.com/demo_run"
+HTML_TO_IMAGE_URL = "https://htmlcsstoimage.com/image_demo"
 
 
 @app.route("/ping", methods=["GET"])
