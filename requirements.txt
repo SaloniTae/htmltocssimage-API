@@ -1,4 +1,4 @@
 Flask
 requests
 gunicorn
-fake-useragent
+ua-generator
