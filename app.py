@@ -21,7 +21,7 @@ REQUEST_TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
 
 INTERNAL_API_KEY = os.environ.get("HTMLCSI_API_KEY", "OTTONRENT")
 STATUS_ENDPOINT = os.environ.get("STATUS_ENDPOINT", "http://166.0.242.212:7777/status")
-POST_ENDPOINT = os.environ.get("POST_ENDPOINT", "https://httpbin.org/anything")
+POST_ENDPOINT = os.environ.get("POST_ENDPOINT", "https://htmlcsstoimage.com/image-demo")
 HOMEPAGE = os.environ.get("HOMEPAGE", "https://htmlcsstoimage.com/")
 
 USER_AGENTS = [
@@ -81,6 +81,7 @@ def generate_minimal_headers(cookie_str: Optional[str], token: Optional[str]) ->
     ua_text = ch_headers.get("user-agent") or ch_headers.get("User-Agent") or pick_random_user_agent()
 
     headers = {
+        "Authority": HOMEPAGE,
         "User-Agent": ua_text,
         "Accept": "*/*",
         "Accept-Language": random.choice(LOCALES),
