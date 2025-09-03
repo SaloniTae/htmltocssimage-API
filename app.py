@@ -10,6 +10,11 @@ from typing import Dict, Tuple, Optional
 from flask import Flask, request, abort, Response, jsonify
 import requests
 
+# ---------- APP ----------
+app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+logger = app.logger
+
 # ---------- CONFIG ----------
 CONNECT_TIMEOUT = int(os.environ.get("HTMLCSI_CONNECT_TIMEOUT", 25))
 READ_TIMEOUT    = int(os.environ.get("HTMLCSI_READ_TIMEOUT", 120))
@@ -37,11 +42,6 @@ except FakeUserAgentError:
     UA_GENERATOR = None
     logger.warning("fake-useragent: failed to create generator, falling back to static list")
     
-# ---------- APP ----------
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
-logger = app.logger
-
 # ---------- UTILITIES ----------
 def pick_random_user_agent() -> str:
     """
