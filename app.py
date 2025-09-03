@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
-from fake_useragent import UserAgent
-from fake_useragent.errors import FakeUserAgentError
+import ua_generator
 
 import os
 import random
@@ -32,34 +31,26 @@ USER_AGENTS = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
 ]
 LOCALES = ["en-US,en;q=0.9", "en-GB,en;q=0.9", "en-IN,en;q=0.9"]
-
-# try to create a fake-useragent generator once at startup
-# if creation fails (no network / blocked), fall back to None and use the static list
-try:
-    UA_GENERATOR = UserAgent()
-    logger.info("fake-useragent: generator created")
-except FakeUserAgentError:
-    UA_GENERATOR = None
-    logger.warning("fake-useragent: failed to create generator, falling back to static list")
     
 # ---------- UTILITIES ----------
 def pick_random_user_agent() -> str:
     """
-    Prefer fake-useragent when available. If fake-useragent fails or is unavailable,
-    fall back to the static USER_AGENTS list.
+    Prefer ua-generator when available; fall back to the static USER_AGENTS list.
+    Returns a single User-Agent string.
     """
-    # Try fake-useragent (may raise internally) — guard with try/except
-    if UA_GENERATOR is not None:
-        try:
-            ua = UA_GENERATOR.random
-            # sanity check: ensure we got a non-empty string
-            if isinstance(ua, str) and ua.strip():
-                return ua
-        except Exception:
-            # any error -> fall back to static list below
-            logger.debug("fake-useragent.random failed; falling back to static list", exc_info=True)
+    try:
+        # generate a random UA (no args -> fully random)
+        ua = ua_generator.generate()
+        hdrs = ua.headers.get()  # returns dict like {'user-agent': '...', 'sec-ch-ua': '...', ...}
+        # prefer the returned user-agent value (header key is lowercase according to README)
+        ua_text = hdrs.get("user-agent") or hdrs.get("User-Agent")
+        if isinstance(ua_text, str) and ua_text.strip():
+            return ua_text
+    except Exception as e:
+        # on any failure, fall back to static list
+        logger.debug("ua-generator failed, falling back to static list: %s", e, exc_info=True)
 
-    # fallback: static pool
+    # fallback
     return random.choice(USER_AGENTS)
 
 
@@ -73,21 +64,52 @@ def random_ipv4_public() -> str:
 
 
 def generate_minimal_headers(cookie_str: Optional[str], token: Optional[str]) -> Dict[str, str]:
-    ua = pick_random_user_agent()
+    """
+    Build headers using ua-generator where possible and fall back to static UA.
+    Adds Sec-CH-UA* headers from ua-generator and the requested Sec-Fetch-* headers.
+    """
+    # Try to get complete headers (user-agent + client hints) from ua-generator
+    ch_headers = {}
+    try:
+        ua = ua_generator.generate()
+        ch_headers = ua.headers.get() or {}
+    except Exception:
+        # silent fallback; pick_random_user_agent() will use static list
+        ch_headers = {}
+
+    # choose final User-Agent (either from ch_headers or fallback function)
+    ua_text = ch_headers.get("user-agent") or ch_headers.get("User-Agent") or pick_random_user_agent()
+
     headers = {
-        "User-Agent": ua,
+        "User-Agent": ua_text,
         "Accept": "*/*",
         "Accept-Language": random.choice(LOCALES),
         "Content-Type": "application/json",
         "Origin": HOMEPAGE,
         "Referer": HOMEPAGE,
-        # add a mild fingerprint if you want, but keep it minimal to avoid backend rejecting:
         "DNT": "1",
+        # Add the Sec-Fetch headers you requested (minimal fixed values)
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
     }
+
+    # Map client-hint keys from ua-generator into canonical header names if present
+    # ua-generator returns keys like 'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform'
+    if ch_headers:
+        if "sec-ch-ua" in ch_headers:
+            headers["Sec-CH-UA"] = ch_headers["sec-ch-ua"]
+        if "sec-ch-ua-mobile" in ch_headers:
+            headers["Sec-CH-UA-Mobile"] = ch_headers["sec-ch-ua-mobile"]
+        if "sec-ch-ua-platform" in ch_headers:
+            headers["Sec-CH-UA-Platform"] = ch_headers["sec-ch-ua-platform"]
+
+    # Attach cookie / token if present (unchanged)
     if cookie_str:
         headers["Cookie"] = cookie_str
     if token:
         headers["requestverificationtoken"] = token
+
     return headers
 
 
