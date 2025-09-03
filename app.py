@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+from fake_useragent import UserAgent
+from fake_useragent.errors import FakeUserAgentError
+
 import os
 import random
 import logging
@@ -24,6 +28,15 @@ USER_AGENTS = [
 ]
 LOCALES = ["en-US,en;q=0.9", "en-GB,en;q=0.9", "en-IN,en;q=0.9"]
 
+# try to create a fake-useragent generator once at startup
+# if creation fails (no network / blocked), fall back to None and use the static list
+try:
+    UA_GENERATOR = UserAgent()
+    logger.info("fake-useragent: generator created")
+except FakeUserAgentError:
+    UA_GENERATOR = None
+    logger.warning("fake-useragent: failed to create generator, falling back to static list")
+    
 # ---------- APP ----------
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +44,22 @@ logger = app.logger
 
 # ---------- UTILITIES ----------
 def pick_random_user_agent() -> str:
+    """
+    Prefer fake-useragent when available. If fake-useragent fails or is unavailable,
+    fall back to the static USER_AGENTS list.
+    """
+    # Try fake-useragent (may raise internally) — guard with try/except
+    if UA_GENERATOR is not None:
+        try:
+            ua = UA_GENERATOR.random
+            # sanity check: ensure we got a non-empty string
+            if isinstance(ua, str) and ua.strip():
+                return ua
+        except Exception:
+            # any error -> fall back to static list below
+            logger.debug("fake-useragent.random failed; falling back to static list", exc_info=True)
+
+    # fallback: static pool
     return random.choice(USER_AGENTS)
 
 
