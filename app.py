@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 logger = app.logger
 
 # ---------- CONFIG ----------
-CONNECT_TIMEOUT = int(os.environ.get("HTMLCSI_CONNECT_TIMEOUT", 25))
+CONNECT_TIMEOUT = int(os.environ.get("HTMLCSI_CONNECT_TIMEOUT", 60))
 READ_TIMEOUT    = int(os.environ.get("HTMLCSI_READ_TIMEOUT", 120))
 REQUEST_TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
 
@@ -115,7 +115,7 @@ def generate_minimal_headers(cookie_str: Optional[str], token: Optional[str]) ->
 
 
 def fetch_status(session: requests.Session) -> Tuple[str, Optional[str]]:
-    resp = session.get(STATUS_ENDPOINT, timeout=30)
+    resp = session.get(STATUS_ENDPOINT, timeout=120)
     resp.raise_for_status()
     data = resp.json()
     cookies = data.get("cookies", []) or []
